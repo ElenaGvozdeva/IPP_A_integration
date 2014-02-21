@@ -37,10 +37,10 @@ static void help()
 
 const char* keys =
 {
-    "{c  camera   |         | use camera or not}"
-    "{cv opencv   |         | use opencv or not}"
-    "{fn file_name|lena.bmp | image file       }"
-    "{a accel     |cpu      | accelerator type: auto (default), cpu, gpu}"
+    "{c  camera   |           | use camera or not}"
+    "{cv opencv   |           | use opencv or not}"
+    "{fn file_name|baboon.jpg | image file       }"
+    "{a accel     |cpu        | accelerator type: auto (default), cpu, gpu}"
 };
 
 //this is a sample for hppiSobel functions
@@ -102,6 +102,8 @@ int main(int argc, const char** argv)
                  accelType == HPP_ACCEL_TYPE_OCL ? "ocl": "?";
 
         printf("accelType %s\n", sAccel.c_str());
+
+        virtMatrix = hppiCreateVirtualMatrices(accel, 1);
     }
 
     for(;;)
@@ -118,13 +120,11 @@ int main(int argc, const char** argv)
 
         if ( !useOpenCV )
         {
+            execTime = (double)getTickCount();
+            
             //convert Mat to hppiMatrix
             src = getHpp(gray);
             dst = getHpp(result);
-
-            virtMatrix = hppiCreateVirtualMatrices(accel, 1);
-
-            execTime = (double)getTickCount();
 
             sts = hppiSobel(accel,src, HPP_MASK_SIZE_3X3,HPP_NORM_L1,virtMatrix[0]);
             CHECK_STATUS(sts,"hppiSobel");
