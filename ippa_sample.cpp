@@ -30,6 +30,7 @@ static void help()
 "You can use cv::Sobel or hppiSobel.\n"
 "Usage: \n"
 "./ipp_async_sobel [--camera]=<use camera,if this key is present>, \n"
+"                  [--opencv]=<use cv::Sobel, if this key is present>, \n"
 "                  [--file_name]=<path to movie or image file>\n"
 "                  [--accel]=<accelerator type: auto (default), cpu, gpu>\n\n");
 }
@@ -37,6 +38,7 @@ static void help()
 const char* keys =
 {
     "{c  camera   |           | use camera or not}"
+    "{cv opencv   |           | use opencv or not}"
     "{fn file_name|baboon.jpg | image file       }"
     "{a accel     |cpu        | accelerator type: auto (default), cpu, gpu}"
 };
@@ -80,24 +82,29 @@ int main(int argc, const char** argv)
         return -1;
     }
 
-    accelType = sAccel == "cpu" ? HPP_ACCEL_TYPE_CPU:
-                sAccel == "gpu" ? HPP_ACCEL_TYPE_GPU:
-                                  HPP_ACCEL_TYPE_ANY;
+    if( !useOpenCV )
+    {
+        printf("used IPP-A\n");
 
-    //Create accelerator instance
-    sts = hppCreateInstance(accelType, 0, &accel);
-    CHECK_STATUS(sts, "hppCreateInstance");
+        accelType = sAccel == "cpu" ? HPP_ACCEL_TYPE_CPU:
+                    sAccel == "gpu" ? HPP_ACCEL_TYPE_GPU:
+                                      HPP_ACCEL_TYPE_ANY;
 
-    accelType = hppQueryAccelType(accel);
+        //Create accelerator instance
+        sts = hppCreateInstance(accelType, 0, &accel);
+        CHECK_STATUS(sts, "hppCreateInstance");
 
-    sAccel = accelType == HPP_ACCEL_TYPE_CPU ? "cpu":
-             accelType == HPP_ACCEL_TYPE_GPU ? "gpu":
-             accelType == HPP_ACCEL_TYPE_GPU_VIA_DX9 ? "gpu":
-             accelType == HPP_ACCEL_TYPE_OCL ? "ocl": "?";
+        accelType = hppQueryAccelType(accel);
 
-    printf("accelType %s\n", sAccel.c_str());
+        sAccel = accelType == HPP_ACCEL_TYPE_CPU ? "cpu":
+                 accelType == HPP_ACCEL_TYPE_GPU ? "gpu":
+                 accelType == HPP_ACCEL_TYPE_GPU_VIA_DX9 ? "gpu":
+                 accelType == HPP_ACCEL_TYPE_OCL ? "ocl": "?";
 
-    virtMatrix = hppiCreateVirtualMatrices(accel, 1);
+        printf("accelType %s\n", sAccel.c_str());
+
+        virtMatrix = hppiCreateVirtualMatrices(accel, 1);
+    }
 
     for(;;)
     {
@@ -109,23 +116,42 @@ int main(int argc, const char** argv)
 
         result.create( image.rows, image.cols, CV_8U);
 
-        double execTime = (double)getTickCount();
+        double execTime = 0;
+
+        if ( !useOpenCV )
+        {
+            execTime = (double)getTickCount();
             
-        //convert Mat to hppiMatrix
-        src = getHpp(gray);
-        dst = getHpp(result);
+            //convert Mat to hppiMatrix
+            src = getHpp(gray);
+            dst = getHpp(result);
 
-        sts = hppiSobel(accel,src, HPP_MASK_SIZE_3X3,HPP_NORM_L1,virtMatrix[0]);
-        CHECK_STATUS(sts,"hppiSobel");
+            sts = hppiSobel(accel,src, HPP_MASK_SIZE_3X3,HPP_NORM_L1,virtMatrix[0]);
+            CHECK_STATUS(sts,"hppiSobel");
 
-        sts = hppiConvert(accel, virtMatrix[0], 0, HPP_RND_MODE_NEAR, dst, HPP_DATA_TYPE_8U);
-        CHECK_STATUS(sts,"hppiConvert");
+            sts = hppiConvert(accel, virtMatrix[0], 0, HPP_RND_MODE_NEAR, dst, HPP_DATA_TYPE_8U);
+            CHECK_STATUS(sts,"hppiConvert");
 
-        // Wait for tasks to complete
-        sts = hppWait(accel, HPP_TIME_OUT_INFINITE);
-        CHECK_STATUS(sts, "hppWait");
+            // Wait for tasks to complete
+            sts = hppWait(accel, HPP_TIME_OUT_INFINITE);
+            CHECK_STATUS(sts, "hppWait");
 
-        execTime = ((double)getTickCount() - execTime)*1000./getTickFrequency();
+            execTime = ((double)getTickCount() - execTime)*1000./getTickFrequency();
+        }
+        else
+        {
+            printf("used OpenCV\n");
+
+            Mat rezx,rezy;
+
+            execTime = (double)getTickCount();
+
+            Sobel(gray,rezx,CV_16S,1,0,3);
+            Sobel(gray,rezy,CV_16S,0,1,3);
+            add(abs(rezx),abs(rezy),result,noArray(),CV_8U);
+
+            execTime = ((double)getTickCount() - execTime)*1000./getTickFrequency();
+        }
 
         printf("Time : %0.3fms\n", execTime);
 
@@ -138,16 +164,19 @@ int main(int argc, const char** argv)
     if (!useCamera)
         waitKey(0);
 
-    if (virtMatrix)
+    if ( !useOpenCV )
     {
-        sts = hppiDeleteVirtualMatrices(accel, virtMatrix);
-        CHECK_DEL_STATUS(sts,"hppiDeleteVirtualMatrices");
-    }
+        if (virtMatrix)
+        {
+            sts = hppiDeleteVirtualMatrices(accel, virtMatrix);
+            CHECK_DEL_STATUS(sts,"hppiDeleteVirtualMatrices");
+        }
 
-    if (accel)
-    {
-        sts = hppDeleteInstance(accel);
-        CHECK_DEL_STATUS(sts, "hppDeleteInstance");
+        if (accel)
+        {
+            sts = hppDeleteInstance(accel);
+            CHECK_DEL_STATUS(sts, "hppDeleteInstance");
+        }
     }
 
     printf("SUCCESS\n");
